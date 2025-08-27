@@ -1,0 +1,64 @@
+name: CI - Build, Deploy, Verify on KinD
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up KinD (Kubernetes-in-Docker)
+        uses: helm/kind-action@v1.8.0
+        with:
+          version: v0.23.0
+          node_image: kindest/node:v1.29.4
+
+      - name: Show cluster info
+        run: |
+          kubectl version --short
+          kubectl get nodes
+
+      - name: Build Docker image
+        run: docker build -t hello-k8s:ci .
+
+      - name: Load image into KinD
+        run: kind load docker-image hello-k8s:ci
+
+      - name: Deploy manifests
+        run: |
+          kubectl apply -f deployment.yaml
+          kubectl rollout status deployment/hello-k8s --timeout=120s
+          kubectl get pods -o wide
+          kubectl get svc hello-k8s
+
+      - name: Verify via port-forward + curl (prints response)
+        run: |
+          set -e
+          kubectl port-forward deploy/hello-k8s 3000:3000 >/dev/null 2>&1 &
+          PF_PID=$!
+          # wait for the tunnel to be ready
+          for i in {1..10}; do
+            (echo > /dev/tcp/127.0.0.1/3000) >/dev/null 2>&1 && break || sleep 1
+          done
+          echo "Requesting http://127.0.0.1:3000 ..."
+          curl -fsS http://127.0.0.1:3000 | tee /tmp/hello.txt
+          kill $PF_PID
+
+      - name: Upload response as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hello-response
+          path: /tmp/hello.txt
+
+      - name: Cleanup (delete resources & cluster)
+        if: always()
+        run: |
+          kubectl delete -f deployment.yaml || true
+          kind delete cluster || true
