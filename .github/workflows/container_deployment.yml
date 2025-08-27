@@ -15,6 +15,7 @@ jobs:
       - name: Set up KinD (Kubernetes-in-Docker)
         uses: helm/kind-action@v1.8.0
         with:
+          cluster_name: kind  
           version: v0.23.0
           node_image: kindest/node:v1.29.4
 
