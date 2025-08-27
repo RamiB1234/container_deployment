@@ -1,9 +1,7 @@
 name: CI - Build, Deploy, Verify on KinD
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   e2e:
